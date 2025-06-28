@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
 import Sidebar from '../components/navigation/Sidebar';
 import TransactionFilters from '../components/transactions/TransactionFilters';
 import TransactionTable from '../components/transactions/TransactionTable';
 import Alert from '../components/ui/Alert';
 import { Transaction } from '../types';
+import { transformTransactionData } from '../utils/dataTransformer';
 
 const TransactionsPage: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -17,59 +17,35 @@ const TransactionsPage: React.FC = () => {
   const [alert, setAlert] = useState({ type: 'info' as const, message: '', isVisible: false });
 
   useEffect(() => {
-    const fetchTransactions = async () => {
-      try {
-        const res = await axios.get('http://localhost:5000/api/transactions');
-        const raw = res.data.data || res.data;
-
-        const formatted: Transaction[] = raw.map((t: any) => ({
-          id: t.id,
-          name: t.category || 'Transaction',
-          amount: parseFloat(t.amount),
-          date: t.date,
-          status: t.status || 'completed',
-          type: t.type,
-          category: t.category,
-          description: t.description || '',
-          user: {
-            id: 'system',
-            name: 'System User',
-            email: 'system@example.com',
-            avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=User'
-          }
-        }));
-
-        setTransactions(formatted);
-      } catch (err) {
-        console.error(err);
-        setAlert({
-          type: 'error',
-          message: 'Failed to load transactions.',
-          isVisible: true
-        });
-      }
-    };
-
-    fetchTransactions();
+    // Load the real transaction data
+    const realTransactions = transformTransactionData();
+    setTransactions(realTransactions);
   }, []);
 
   const filteredAndSortedTransactions = useMemo(() => {
     let filtered = transactions.filter(transaction => {
       const matchesSearch = transaction.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        transaction.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        transaction.user.name.toLowerCase().includes(searchTerm.toLowerCase());
-
+                          transaction.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          transaction.user.name.toLowerCase().includes(searchTerm.toLowerCase());
+      
       const matchesStatus = !statusFilter || transaction.status === statusFilter;
       const matchesType = !typeFilter || transaction.type === typeFilter;
-
-      const matchesDateRange = (!dateRange.start || new Date(transaction.date) >= new Date(dateRange.start)) &&
-        (!dateRange.end || new Date(transaction.date) <= new Date(dateRange.end));
+      
+      // Convert transaction date to comparable format
+      const transactionDate = new Date(transaction.date);
+      const startDate = dateRange.start ? new Date(dateRange.start) : null;
+      const endDate = dateRange.end ? new Date(dateRange.end) : null;
+      
+      const matchesDateRange = (!startDate || transactionDate >= startDate) &&
+                             (!endDate || transactionDate <= endDate);
 
       return matchesSearch && matchesStatus && matchesType && matchesDateRange;
     });
 
+    // Sort transactions
     filtered.sort((a, b) => {
       let aValue, bValue;
+      
       switch (sortBy) {
         case 'name':
           aValue = a.name.toLowerCase();
@@ -90,6 +66,7 @@ const TransactionsPage: React.FC = () => {
         default:
           return 0;
       }
+
       if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
       return 0;
@@ -118,8 +95,9 @@ const TransactionsPage: React.FC = () => {
 
   const handleExportCSV = () => {
     const csvContent = [
-      ['Name', 'Date', 'Amount', 'Type', 'Status', 'Category', 'User', 'Description'],
+      ['ID', 'Name', 'Date', 'Amount', 'Type', 'Status', 'Category', 'User', 'Description'],
       ...filteredAndSortedTransactions.map(t => [
+        t.id,
         t.name,
         t.date,
         t.amount.toString(),
@@ -129,19 +107,19 @@ const TransactionsPage: React.FC = () => {
         t.user.name,
         t.description || ''
       ])
-    ].map(row => row.join(',')).join('\n');
+    ].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `transactions_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `financial_transactions_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     window.URL.revokeObjectURL(url);
 
     setAlert({
       type: 'success',
-      message: 'Transactions exported successfully!',
+      message: `Successfully exported ${filteredAndSortedTransactions.length} transactions to CSV!`,
       isVisible: true
     });
   };
@@ -154,13 +132,18 @@ const TransactionsPage: React.FC = () => {
         isVisible={alert.isVisible}
         onClose={() => setAlert(prev => ({ ...prev, isVisible: false }))}
       />
-
+      
       <Sidebar />
-
+      
       <div className="flex-1 ml-64 p-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Transactions</h1>
-          <p className="text-gray-400">Manage and analyze all your financial transactions.</p>
+          <p className="text-gray-400">
+            Manage and analyze all your financial transactions. 
+            <span className="text-green-400 ml-2">
+              {transactions.length} total transactions loaded
+            </span>
+          </p>
         </div>
 
         <TransactionFilters
@@ -175,6 +158,22 @@ const TransactionsPage: React.FC = () => {
           onExportCSV={handleExportCSV}
           onReset={handleReset}
         />
+
+        <div className="mb-4 flex items-center justify-between">
+          <p className="text-gray-400">
+            Showing {filteredAndSortedTransactions.length} of {transactions.length} transactions
+          </p>
+          <div className="flex items-center space-x-4 text-sm text-gray-400">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+              <span>Income: {filteredAndSortedTransactions.filter(t => t.type === 'income').length}</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+              <span>Expenses: {filteredAndSortedTransactions.filter(t => t.type === 'expense').length}</span>
+            </div>
+          </div>
+        </div>
 
         <TransactionTable
           transactions={filteredAndSortedTransactions}

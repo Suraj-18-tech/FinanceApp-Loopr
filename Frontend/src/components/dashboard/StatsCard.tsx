@@ -1,12 +1,12 @@
 import React from 'react';
-import { DivideIcon as LucideIcon } from 'lucide-react';
+import { LucideCrop as LucideProps } from 'lucide-react';
 
 interface StatsCardProps {
   title: string;
   value: string;
   change: string;
   changeType: 'positive' | 'negative' | 'neutral';
-  icon: LucideIcon;
+  icon: React.ElementType<LucideProps>;
   color: string;
 }
 
