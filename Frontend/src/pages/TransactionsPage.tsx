@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import axios from 'axios';
 import Sidebar from '../components/navigation/Sidebar';
 import TransactionFilters from '../components/transactions/TransactionFilters';
 import TransactionTable from '../components/transactions/TransactionTable';
@@ -16,128 +17,59 @@ const TransactionsPage: React.FC = () => {
   const [alert, setAlert] = useState({ type: 'info' as const, message: '', isVisible: false });
 
   useEffect(() => {
-    // Mock data - in a real app, this would come from an API
-    const mockTransactions: Transaction[] = [
-      {
-        id: '1',
-        name: 'Salary Payment',
-        amount: 5000,
-        date: '2024-04-20',
-        status: 'completed',
-        type: 'income',
-        category: 'Salary',
-        description: 'Monthly salary payment',
-        user: {
-          id: '1',
-          name: 'Matheus Ferreira',
-          email: 'matheus@example.com',
-          avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1'
-        }
-      },
-      {
-        id: '2',
-        name: 'Freelance Project',
-        amount: 850,
-        date: '2024-04-18',
-        status: 'completed',
-        type: 'income',
-        category: 'Freelance',
-        description: 'Web development project',
-        user: {
-          id: '2',
-          name: 'Floyd Miles',
-          email: 'floyd@example.com',
-          avatar: 'https://images.pexels.com/photos/91227/pexels-photo-91227.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1'
-        }
-      },
-      {
-        id: '3',
-        name: 'Office Supplies',
-        amount: 230,
-        date: '2024-04-17',
-        status: 'pending',
-        type: 'expense',
-        category: 'Office',
-        description: 'Monthly office supplies',
-        user: {
-          id: '3',
-          name: 'Jerome Bell',
-          email: 'jerome@example.com',
-          avatar: 'https://images.pexels.com/photos/1040881/pexels-photo-1040881.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1'
-        }
-      },
-      {
-        id: '4',
-        name: 'Grocery Shopping',
-        amount: 156,
-        date: '2024-04-15',
-        status: 'completed',
-        type: 'expense',
-        category: 'Food',
-        description: 'Weekly grocery shopping',
-        user: {
-          id: '4',
-          name: 'Sarah Johnson',
-          email: 'sarah@example.com',
-          avatar: 'https://images.pexels.com/photos/415829/pexels-photo-415829.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1'
-        }
-      },
-      {
-        id: '5',
-        name: 'Investment Dividend',
-        amount: 320,
-        date: '2024-04-12',
-        status: 'completed',
-        type: 'income',
-        category: 'Investment',
-        description: 'Quarterly dividend payment',
-        user: {
-          id: '5',
-          name: 'Mike Chen',
-          email: 'mike@example.com',
-          avatar: 'https://images.pexels.com/photos/769745/pexels-photo-769745.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1'
-        }
-      },
-      {
-        id: '6',
-        name: 'Utility Bill',
-        amount: 89,
-        date: '2024-04-10',
-        status: 'failed',
-        type: 'expense',
-        category: 'Utilities',
-        description: 'Monthly electricity bill',
-        user: {
-          id: '6',
-          name: 'Lisa Wang',
-          email: 'lisa@example.com',
-          avatar: 'https://images.pexels.com/photos/712513/pexels-photo-712513.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1'
-        }
-      }
-    ];
+    const fetchTransactions = async () => {
+      try {
+        const res = await axios.get('http://localhost:5000/api/transactions');
+        const raw = res.data.data || res.data;
 
-    setTransactions(mockTransactions);
+        const formatted: Transaction[] = raw.map((t: any) => ({
+          id: t.id,
+          name: t.category || 'Transaction',
+          amount: parseFloat(t.amount),
+          date: t.date,
+          status: t.status || 'completed',
+          type: t.type,
+          category: t.category,
+          description: t.description || '',
+          user: {
+            id: 'system',
+            name: 'System User',
+            email: 'system@example.com',
+            avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=User'
+          }
+        }));
+
+        setTransactions(formatted);
+      } catch (err) {
+        console.error(err);
+        setAlert({
+          type: 'error',
+          message: 'Failed to load transactions.',
+          isVisible: true
+        });
+      }
+    };
+
+    fetchTransactions();
   }, []);
 
   const filteredAndSortedTransactions = useMemo(() => {
     let filtered = transactions.filter(transaction => {
       const matchesSearch = transaction.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          transaction.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          transaction.user.name.toLowerCase().includes(searchTerm.toLowerCase());
-      
+        transaction.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        transaction.user.name.toLowerCase().includes(searchTerm.toLowerCase());
+
       const matchesStatus = !statusFilter || transaction.status === statusFilter;
       const matchesType = !typeFilter || transaction.type === typeFilter;
-      
+
       const matchesDateRange = (!dateRange.start || new Date(transaction.date) >= new Date(dateRange.start)) &&
-                             (!dateRange.end || new Date(transaction.date) <= new Date(dateRange.end));
+        (!dateRange.end || new Date(transaction.date) <= new Date(dateRange.end));
 
       return matchesSearch && matchesStatus && matchesType && matchesDateRange;
     });
 
-    // Sort transactions
     filtered.sort((a, b) => {
       let aValue, bValue;
-      
       switch (sortBy) {
         case 'name':
           aValue = a.name.toLowerCase();
@@ -158,7 +90,6 @@ const TransactionsPage: React.FC = () => {
         default:
           return 0;
       }
-
       if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
       return 0;
@@ -223,9 +154,9 @@ const TransactionsPage: React.FC = () => {
         isVisible={alert.isVisible}
         onClose={() => setAlert(prev => ({ ...prev, isVisible: false }))}
       />
-      
+
       <Sidebar />
-      
+
       <div className="flex-1 ml-64 p-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Transactions</h1>

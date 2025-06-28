@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import axios from 'axios';
 import { User } from '../types';
 
 interface AuthContextType {
@@ -13,7 +14,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
@@ -28,10 +29,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session
     const storedUser = localStorage.getItem('user');
-    if (storedUser) {
+    const storedToken = localStorage.getItem('token');
+    if (storedUser && storedToken) {
       setUser(JSON.parse(storedUser));
+      axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
     }
     setIsLoading(false);
   }, []);
@@ -39,20 +41,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = async (email: string, password: string): Promise<boolean> => {
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const mockUser: User = {
-        id: '1',
-        name: 'XYZ',
-        email: email,
-        avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1'
+      const res = await axios.post('http://localhost:5000/api/auth/login', {
+        username: email, // backend expects username
+        password
+      });
+
+      const token = res.data.token;
+
+      // Decode token payload (optionally extract user info)
+      const decoded: any = JSON.parse(atob(token.split('.')[1]));
+
+      const loggedInUser: User = {
+        id: decoded.userId,
+        name: email.split('@')[0], // fallback name
+        email,
+        avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${email}`
       };
-      
-      setUser(mockUser);
-      localStorage.setItem('user', JSON.stringify(mockUser));
+
+      setUser(loggedInUser);
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(loggedInUser));
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
       return true;
     } catch (error) {
+      console.error('Login error:', error);
       return false;
     } finally {
       setIsLoading(false);
@@ -62,20 +75,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signup = async (name: string, email: string, password: string): Promise<boolean> => {
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const mockUser: User = {
-        id: Date.now().toString(),
-        name: name,
-        email: email,
-        avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=1'
+      const res = await axios.post('http://localhost:5000/api/auth/register', {
+        username: name,
+        email,
+        password
+      });
+
+      const token = res.data.token;
+      const decoded: any = JSON.parse(atob(token.split('.')[1]));
+
+      const newUser: User = {
+        id: decoded.userId,
+        name,
+        email,
+        avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${email}`
       };
-      
-      setUser(mockUser);
-      localStorage.setItem('user', JSON.stringify(mockUser));
+
+      setUser(newUser);
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(newUser));
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
       return true;
     } catch (error) {
+      console.error('Signup error:', error);
       return false;
     } finally {
       setIsLoading(false);
@@ -85,6 +108,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logout = () => {
     setUser(null);
     localStorage.removeItem('user');
+    localStorage.removeItem('token');
+    delete axios.defaults.headers.common['Authorization'];
   };
 
   return (
