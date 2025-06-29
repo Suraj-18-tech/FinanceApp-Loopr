@@ -28,9 +28,10 @@
 
 ---
 # Backend setup
--
--
--
+- cd backend
+- npm i --save-dev @types/cors
+- npm i
+- npm run dev
 
 # Frontend setup
 - cd frontend
